@@ -2,6 +2,10 @@
 
 N-Queens 求解器，通过图片识别并求解游戏中的棋盘谜题。
 
+## 在线演示
+
+🔗 [https://n1.0xtao.cn/](https://n1.0xtao.cn/)
+
 ## 环境要求
 
 - PHP 8.1+
