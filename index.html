@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>冷风大王牛牛解密</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f0f2f5; display: flex; justify-content: center; padding: 20px; margin: 0; }
+        .box { background: #fff; padding: 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); max-width: 600px; width: 100%; text-align: center; }
+        .btn { padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; transition: 0.2s; }
+        .btn:hover { background: #0056b3; }
+        .btn:disabled { background: #ccc; cursor: not-allowed; }
+        
+        /* 阶段容器控制 */
+        #step1, #step2, #step3 { display: none; }
+        #step1.active, #step2.active, #step3.active { display: block; }
+        
+        /* 裁剪区域 */
+        .img-container { max-width: 100%; max-height: 60vh; margin: 15px 0; background: #eee; }
+        img { display: block; max-width: 100%; }
+        
+        /* 控制面板 */
+        .controls { display: flex; justify-content: center; align-items: center; gap: 15px; margin-top: 15px; background: #f8f9fa; padding: 15px; border-radius: 8px; }
+        .controls input { width: 60px; padding: 8px; text-align: center; border: 1px solid #ccc; border-radius: 4px; font-size: 16px; }
+        
+        /* 结果画布 */
+        #resultCanvas { max-width: 100%; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-top: 15px; }
+        .msg { margin-top: 15px; font-weight: bold; color: #d32f2f; }
+        .success { color: #2e7d32; }
+    </style>
+</head>
+<body>
+
+<div class="box">
+    <h2 style="margin-top:0; color:#333;">🎯 冷风大王牛牛解密</h2>
+    
+    <div id="step1" class="active">
+        <p style="color: #666; margin-bottom: 20px;">请上传包含游戏棋盘的截图</p>
+        <input type="file" id="imageInput" accept="image/*" style="display:none;">
+        <button class="btn" onclick="document.getElementById('imageInput').click()">选择图片</button>
+    </div>
+
+    <div id="step2">
+        <p style="color: #e65100; font-weight: bold; margin: 0;">拖拽边框，精准框选出游戏棋盘区域！</p>
+        <div class="img-container">
+            <img id="imageToCrop" src="">
+        </div>
+        <div class="controls">
+            <label><strong>网格 N = </strong></label>
+            <input type="number" id="gridN" value="10" min="5" max="30">
+            <button class="btn" id="solveBtn" style="background:#28a745;">确认裁剪并求解</button>
+        </div>
+        <div id="status" class="msg"></div>
+    </div>
+
+    <div id="step3">
+        <h3 class="success" id="resultTitle">✅ 求解成功！</h3>
+        <canvas id="resultCanvas"></canvas>
+        <br>
+        <button class="btn" onclick="location.reload()" style="margin-top: 20px; background: #6c757d;">解下一题</button>
+    </div>
+</div>
+
+<script>
+    const imageInput = document.getElementById('imageInput');
+    const imageToCrop = document.getElementById('imageToCrop');
+    const step1 = document.getElementById('step1');
+    const step2 = document.getElementById('step2');
+    const step3 = document.getElementById('step3');
+    const solveBtn = document.getElementById('solveBtn');
+    const gridNInput = document.getElementById('gridN');
+    const status = document.getElementById('status');
+    const resultCanvas = document.getElementById('resultCanvas');
+    const ctx = resultCanvas.getContext('2d');
+    
+    let cropper = null;
+
+    // 1. 读取图片并初始化裁剪器
+    imageInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            imageToCrop.src = event.target.result;
+            step1.classList.remove('active');
+            step2.classList.add('active');
+            
+            // 初始化 Cropper.js (强制 1:1 比例)
+            cropper = new Cropper(imageToCrop, {
+                aspectRatio: 1,
+                viewMode: 1,
+                dragMode: 'move',
+                autoCropArea: 0.8,
+                restore: false,
+                guides: true,
+                center: true,
+                highlight: false,
+                cropBoxMovable: true,
+                cropBoxResizable: true,
+                toggleDragModeOnDblclick: false,
+            });
+        };
+        reader.readAsDataURL(file);
+    });
+
+    // 2. 提交裁剪后的图片发给 PHP
+    solveBtn.addEventListener('click', () => {
+        const N = parseInt(gridNInput.value);
+        if (isNaN(N) || N < 5 || N > 30) {
+            status.textContent = '请填写正确的 N 值 (5-30)';
+            return;
+        }
+
+        status.textContent = '正在由服务器进行高强度计算...';
+        status.className = 'msg';
+        solveBtn.disabled = true;
+
+        // 获取用户框选区域的 Canvas 数据 (统一缩放到 600x600 以降低 PHP 压力)
+        const croppedCanvas = cropper.getCroppedCanvas({ width: 600, height: 600 });
+        
+        // 将裁剪后的纯净正方形转为 Blob 文件
+        croppedCanvas.toBlob(async (blob) => {
+            const formData = new FormData();
+            formData.append('image', blob, 'cropped.png');
+            formData.append('n', N);
+
+            try {
+                const response = await fetch('solve.php', { method: 'POST', body: formData });
+                const data = await response.json();
+
+                if (data.success) {
+                    // 切换到结果界面
+                    step2.classList.remove('active');
+                    step3.classList.add('active');
+                    
+                    // 在 Canvas 上画出裁剪后的图和答案
+                    resultCanvas.width = croppedCanvas.width;
+                    resultCanvas.height = croppedCanvas.height;
+                    ctx.drawImage(croppedCanvas, 0, 0);
+                    drawSolution(data.solution, N, croppedCanvas.width);
+                } else {
+                    status.textContent = '❌ ' + data.error;
+                    solveBtn.disabled = false;
+                }
+            } catch (err) {
+                status.textContent = '❌ 服务器请求失败，请检查 PHP 后端。';
+                solveBtn.disabled = false;
+            }
+        }, 'image/png');
+    });
+
+    // 3. 绘制答案红圈
+    function drawSolution(solution, N, size) {
+        const cellSize = size / N;
+        ctx.strokeStyle = 'rgba(255, 0, 0, 0.9)';
+        ctx.fillStyle = 'rgba(255, 0, 0, 0.3)';
+        ctx.lineWidth = 5;
+
+        solution.forEach(pos => {
+            const row = pos[0], col = pos[1];
+            const centerX = (col + 0.5) * cellSize;
+            const centerY = (row + 0.5) * cellSize;
+            const radius = cellSize * 0.35;
+
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, radius, 0, 2 * Math.PI);
+            ctx.fill();
+            ctx.stroke();
+            
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, 5, 0, 2 * Math.PI);
+            ctx.fillStyle = 'red';
+            ctx.fill();
+        });
+    }
+</script>
+
+</body>
+</html>
